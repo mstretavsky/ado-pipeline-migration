@@ -1,4 +1,4 @@
-name: Build and Deploy
+name: SEN x64 release
 
 on:
   push:
@@ -35,24 +35,6 @@ jobs:
 
       - name: Postbuild ESA
         run: pwsh ./scripts/postbuildA.ps1
-
-      - name: Snyk scan SCA-C++
-        uses: snyk/actions/scan@v1
-        with:
-          args: --unmanaged -d --remote-repo-url=DEVE-SCA-C++ --target-reference=${{ secrets.SNYK_TARGET_REFERENCE }}
-        if: ${{ github.event_name == 'push' && needs.build.outputs.runSnykScans == 'true' }}
-
-      - name: Snyk scan SCA-.NET
-        uses: snyk/actions/scan@v1
-        with:
-          args: --all-projects --detection-depth=100 -d --exclude=Util,CADS --remote-repo-url="DEVE-SCA-.NET" --target-reference=${{ secrets.SNYK_TARGET_REFERENCE }}
-        if: ${{ github.event_name == 'push' && needs.build.outputs.runSnykScans == 'true' }}
-
-      - name: Snyk scan SAST
-        uses: snyk/actions/scan@v1
-        with:
-          args: --report --target-name="DEVE-SAST" -d --target-reference=${{ secrets.SNYK_TARGET_REFERENCE_SAST }}
-        if: ${{ github.event_name == 'push' && needs.build.outputs.runSnykScans == 'true' }}
 
       - name: Languages
         run: pwsh ./scripts/languages.ps1
