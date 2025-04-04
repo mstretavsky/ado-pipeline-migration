@@ -1,0 +1,104 @@
+name: Build and Deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Validate input
+        run: pwsh ./scripts/validate.ps1
+
+      - name: Prebuild steps
+        run: pwsh ./scripts/prebuild.ps1
+
+      - name: Test relative path includes
+        run: pwsh ./scripts/testRelativePathIncludes.ps1
+        if: ${{ github.event_name == 'push' && needs.build.outputs.testRelativeIncludes == 'true' }}
+
+      - name: Validate XML configurations
+        run: pwsh ./scripts/validateXmlConfig.ps1
+        if: ${{ github.event_name == 'push' && needs.build.outputs.runXMLConfigValidation == 'true' }}
+
+      - name: Compile ESA sources
+        run: pwsh ./scripts/buildA.ps1
+
+      - name: Postbuild ESA
+        run: pwsh ./scripts/postbuildA.ps1
+
+      - name: Snyk scan SCA-C++
+        uses: snyk/actions/scan@v1
+        with:
+          args: --unmanaged -d --remote-repo-url=DEVE-SCA-C++ --target-reference=${{ secrets.SNYK_TARGET_REFERENCE }}
+        if: ${{ github.event_name == 'push' && needs.build.outputs.runSnykScans == 'true' }}
+
+      - name: Snyk scan SCA-.NET
+        uses: snyk/actions/scan@v1
+        with:
+          args: --all-projects --detection-depth=100 -d --exclude=Util,CADS --remote-repo-url="DEVE-SCA-.NET" --target-reference=${{ secrets.SNYK_TARGET_REFERENCE }}
+        if: ${{ github.event_name == 'push' && needs.build.outputs.runSnykScans == 'true' }}
+
+      - name: Snyk scan SAST
+        uses: snyk/actions/scan@v1
+        with:
+          args: --report --target-name="DEVE-SAST" -d --target-reference=${{ secrets.SNYK_TARGET_REFERENCE_SAST }}
+        if: ${{ github.event_name == 'push' && needs.build.outputs.runSnykScans == 'true' }}
+
+      - name: Languages
+        run: pwsh ./scripts/languages.ps1
+
+      - name: SDF forms
+        run: pwsh ./scripts/sdf.ps1
+
+      - name: Pre-packing steps
+        run: pwsh ./scripts/prepack.ps1
+
+      - name: Packing steps
+        run: pwsh ./scripts/packing.ps1
+
+      - name: Publish Artifact: FullVer
+        uses: actions/upload-artifact@v2
+        with:
+          name: FullVer
+          path: ./_packed
+
+      - name: Test Assemblies
+        run: pwsh ./scripts/testAssemblies.ps1
+
+      - name: Prepare Poirots run
+        run: pwsh ./scripts/preparePoirots.ps1
+        if: ${{ github.event_name == 'push' && needs.build.outputs.runPoirots == 'true' }}
+
+      - name: VsTest - Poirots
+        run: pwsh ./scripts/vsTestPoirots.ps1
+        if: ${{ github.event_name == 'push' && needs.build.outputs.runPoirots == 'true' }}
+
+      - name: VsTest - Poirots failed
+        run: pwsh ./scripts/checkPoirotsStatus.ps1
+        if: ${{ always() }}
+
+      - name: Post packing steps
+        run: pwsh ./scripts/postpack.ps1
+
+      - name: Count build warnings
+        run: pwsh ./scripts/countBuildWarnings.ps1
+
+      - name: Compare build warnings
+        run: pwsh ./scripts/compareBuildWarnings.ps1
+
+      - name: Copy Build result files
+        run: |
+          Copy-Item -Path "$(Build.SourcesDirectory)\BuildResults\*" -Destination "$(OutputRoot)\$(build.utftppath)" -Recurse -Force
+
+      - name: Finish steps
+        run: pwsh ./scripts/finish.ps1
